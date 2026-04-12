@@ -1208,6 +1208,12 @@ function initTTS() {
       const lang = (v.lang || '').toLowerCase();
       let s = 0;
 
+      // Tier 1: best Google Spanish voices.
+      if (/google español de españa|google español/.test(name)) s += 400;
+
+      // Tier 2: iOS premium Spanish voices.
+      if (/mónica|monica|marisol|paulina|jorge/.test(name) && lang.startsWith('es')) s += 300;
+
       if (lang === 'es-es') s += 500;
       else if (lang.startsWith('es-')) s += 350;
       else if (lang.startsWith('es')) s += 250;
@@ -1218,6 +1224,9 @@ function initTTS() {
       if (/cortana/.test(name)) s += 60;
 
       if (/elvira|alvaro|álvaro|helena|sabina|paulina|monica|mónica|jorge|esperanza/.test(name)) s += 80;
+
+      // Avoid cross-language fallbacks that can appear mislabeled.
+      if (/english|united states|português|français/.test(name)) s -= 200;
 
       // Slight preference for non-local voices when present (often higher quality).
       if (v.localService === false) s += 20;
@@ -1280,11 +1289,16 @@ function speakOnce(text, timeoutMs = 4800) {
       done('timeout');
     }, timeoutMs);
 
-    try {
-      speechSynthesis.speak(u);
-    } catch (_) {
-      done('error');
-    }
+    // Chrome workaround: clear queue and wait before speaking.
+    speechSynthesis.cancel();
+    waitMs(120).then(() => {
+      if (settled) return;
+      try {
+        speechSynthesis.speak(u);
+      } catch (_) {
+        done('error');
+      }
+    });
   });
 }
 
@@ -1315,9 +1329,6 @@ async function speakTable(n) {
   const btn = document.getElementById('btn-read-table');
   if (btn) { btn.innerHTML = '⏹ Parar'; btn.classList.add('reading'); }
 
-  speechSynthesis.cancel();
-  await waitMs(80);
-
   // Intro
   await speakOnce(`Tabla del ${numEs(n)}`);
   if (runId !== tableRunId) return;
@@ -1328,7 +1339,7 @@ async function speakTable(n) {
     highlightRow(n, i);
     await speakOnce(`${numEs(n)} por ${numEs(i)}, ${numEs(n * i)}`);
     if (runId !== tableRunId) return;
-    await waitMs(180);
+    await waitMs(300);
   }
 
   if (runId === tableRunId) stopTable();
