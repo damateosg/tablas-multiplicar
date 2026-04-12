@@ -475,12 +475,64 @@
       to   { opacity:1; transform:translateY(0); }
     }
     .slide { animation: slideIn .35s ease forwards; }
+
+    /* ====== NAME PROMPT ====== */
+    .name-modal {
+      position: fixed; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(10, 10, 30, .55);
+      backdrop-filter: blur(8px);
+      z-index: 1200;
+      padding: 16px;
+    }
+    .name-modal.hidden { display: none; }
+    .name-card {
+      width: min(460px, 100%);
+      background: var(--card);
+      border: 1px solid var(--card-b);
+      border-radius: var(--r);
+      padding: 18px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(12px);
+    }
+    .name-card h3 { font-size: 1.2rem; font-weight: 900; margin-bottom: 4px; }
+    .name-card p { color: var(--muted); font-size: .9rem; margin-bottom: 12px; }
+    .name-input {
+      width: 100%;
+      background: rgba(255,255,255,.08);
+      border: 1px solid var(--card-b);
+      border-radius: 12px;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 1rem;
+      padding: 12px;
+      outline: none;
+    }
+    .name-input::placeholder { color: var(--muted); }
+    .name-actions {
+      margin-top: 10px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
   </style>
 </head>
 
 <body>
 <div id="stars-bg"></div>
 <div id="toast"></div>
+
+<div id="name-modal" class="name-modal hidden">
+  <div class="name-card">
+    <h3>👋 ¡Hola!</h3>
+    <p>Antes de empezar, ¿cómo te llamas?</p>
+    <input id="name-input" class="name-input" type="text" maxlength="24" placeholder="Escribe tu nombre" autocomplete="name">
+    <div class="name-actions">
+      <button class="btn-sec" onclick="skipName()">Ahora no</button>
+      <button class="btn-main" onclick="saveName()">Continuar</button>
+    </div>
+  </div>
+</div>
 
 <div id="app">
 
@@ -497,7 +549,7 @@
   <div id="s-home" class="screen on">
     <div class="welcome">
       <span class="big" id="gr-emoji">🚀</span>
-      <h2 id="gr-title">¡Hola, Ana!</h2>
+      <h2 id="gr-title">¡Hola!</h2>
       <p id="gr-sub">¡Vamos a conquistar las tablas!</p>
     </div>
 
@@ -719,7 +771,7 @@ function mkState() {
   for (let a = 1; a <= 10; a++)
     for (let b = 1; b <= 10; b++)
       cards[`${a}x${b}`] = mkCard(a, b);
-  return { cards, streak: 0, lastDate: null, xp: 0 };
+  return { cards, streak: 0, lastDate: null, xp: 0, childName: '' };
 }
 
 function load() {
@@ -742,6 +794,46 @@ for (const k in st.cards) {
   if (!('due' in c)) c.due = 0;
   if (!('total' in c)) c.total = 0;
   if (!('correct' in c)) c.correct = 0;
+}
+if (!('childName' in st)) st.childName = '';
+
+function displayName() {
+  return st.childName && st.childName.trim() ? st.childName.trim() : 'peque';
+}
+
+function sanitizeName(raw) {
+  return (raw || '').replace(/\s+/g, ' ').trim().slice(0, 24);
+}
+
+function openNameModal() {
+  const modal = document.getElementById('name-modal');
+  const input = document.getElementById('name-input');
+  modal.classList.remove('hidden');
+  input.value = st.childName || '';
+  setTimeout(() => input.focus(), 40);
+}
+
+function closeNameModal() {
+  document.getElementById('name-modal').classList.add('hidden');
+}
+
+function saveName() {
+  const input = document.getElementById('name-input');
+  const name = sanitizeName(input.value);
+  if (!name) {
+    toast('Escribe tu nombre o pulsa "Ahora no"');
+    input.focus();
+    return;
+  }
+  st.childName = name;
+  save();
+  closeNameModal();
+  updateHome();
+}
+
+function skipName() {
+  closeNameModal();
+  updateHome();
 }
 
 /* ============================================================
@@ -908,13 +1000,14 @@ function updateHome() {
   }
   document.getElementById('b-streak').textContent = st.streak;
   document.getElementById('b-xp').textContent = st.xp;
+  const name = displayName();
   const h = new Date().getHours();
   applyTimeTheme(h);
   const [emoji,title,sub] = h<12
-    ? ['☀️','¡Buenos días, Ana!','¡Las tablas te esperan! 📚']
+    ? ['☀️',`¡Buenos días, ${name}!`,'¡Las tablas te esperan! 📚']
     : h<18
-    ? ['🌤️','¡Buenas tardes, Ana!','¡Sigue con tu racha! 🔥']
-    : ['🌙','¡Buenas noches, Ana!','Un último repaso y listo 🌟'];
+    ? ['🌤️',`¡Buenas tardes, ${name}!`,'¡Sigue con tu racha! 🔥']
+    : ['🌙',`¡Buenas noches, ${name}!`,'Un último repaso y listo 🌟'];
   document.getElementById('gr-emoji').textContent = emoji;
   document.getElementById('gr-title').textContent = title;
   document.getElementById('gr-sub').textContent = sub;
@@ -1450,6 +1543,7 @@ function init() {
   initTTS();
   checkStreakReset();
   updateHome();
+  if (!st.childName || !st.childName.trim()) openNameModal();
 }
 
 init();
