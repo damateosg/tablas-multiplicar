@@ -415,7 +415,7 @@
   <div id="s-home" class="screen on">
     <div class="welcome">
       <span class="big" id="gr-emoji">🚀</span>
-      <h2 id="gr-title">¡Hola, matemático!</h2>
+      <h2 id="gr-title">¡Hola, Ana!</h2>
       <p id="gr-sub">¡Vamos a conquistar las tablas!</p>
     </div>
 
@@ -809,10 +809,10 @@ function updateHome() {
   document.getElementById('b-xp').textContent = st.xp;
   const h = new Date().getHours();
   const [emoji,title,sub] = h<12
-    ? ['☀️','¡Buenos días, matemático!','¡Las tablas te esperan! 📚']
+    ? ['☀️','¡Buenos días, Ana!','¡Las tablas te esperan! 📚']
     : h<18
-    ? ['🌤️','¡Buenas tardes, genio!','¡Sigue con tu racha! 🔥']
-    : ['🌙','¡Buenas noches, estrella!','Un último repaso y listo 🌟'];
+    ? ['🌤️','¡Buenas tardes, Ana!','¡Sigue con tu racha! 🔥']
+    : ['🌙','¡Buenas noches, Ana!','Un último repaso y listo 🌟'];
   document.getElementById('gr-emoji').textContent = emoji;
   document.getElementById('gr-title').textContent = title;
   document.getElementById('gr-sub').textContent = sub;
