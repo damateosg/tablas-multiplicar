@@ -1194,6 +1194,7 @@ function numEs(n) { return NUMS_ES[n] || String(n); }
 let ttsVoice = null;
 let tableReadTimer = null;
 let tableRunId = 0;
+let tableReading = false;
 
 function initTTS() {
   if (!window.speechSynthesis) return;
@@ -1250,6 +1251,43 @@ function speak(text, onend) {
   setTimeout(() => speechSynthesis.speak(u), 80);
 }
 
+function waitMs(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function speakOnce(text, timeoutMs = 4800) {
+  return new Promise(resolve => {
+    if (!window.speechSynthesis) {
+      resolve('no-speech');
+      return;
+    }
+
+    let settled = false;
+    const done = (status) => {
+      if (settled) return;
+      settled = true;
+      if (tableReadTimer) clearTimeout(tableReadTimer);
+      tableReadTimer = null;
+      resolve(status);
+    };
+
+    const u = mkUtterance(text, () => done('end'));
+    u.onerror = () => done('error');
+
+    tableReadTimer = setTimeout(() => {
+      // If the browser misses onend, force a clean advance.
+      if (window.speechSynthesis) speechSynthesis.cancel();
+      done('timeout');
+    }, timeoutMs);
+
+    try {
+      speechSynthesis.speak(u);
+    } catch (_) {
+      done('error');
+    }
+  });
+}
+
 function speakMult(a, b) {
   stopTable();
   speak(`${numEs(a)} por ${numEs(b)}, ${numEs(a * b)}`);
@@ -1261,78 +1299,44 @@ function speakMult(a, b) {
   }, 2200);
 }
 
-function speakTable(n) {
-  // Toggle: if already reading, stop
-  if (tableReadTimer !== null) { stopTable(); return; }
+async function speakTable(n) {
+  // Toggle stop
+  if (tableReading) {
+    stopTable();
+    return;
+  }
+  if (!window.speechSynthesis) {
+    toast('Tu navegador no soporta voz 🔇');
+    return;
+  }
+
   const runId = ++tableRunId;
-  let i = 1;
+  tableReading = true;
   const btn = document.getElementById('btn-read-table');
   if (btn) { btn.innerHTML = '⏹ Parar'; btn.classList.add('reading'); }
 
-  const clearWatchdog = () => {
-    if (tableReadTimer) clearTimeout(tableReadTimer);
-    tableReadTimer = null;
-  };
-
-  const armWatchdog = (onTimeout) => {
-    clearWatchdog();
-    // Timeout guard only; does not run in parallel with normal flow.
-    tableReadTimer = setTimeout(onTimeout, 4200);
-  };
-
-  const next = () => {
-    if (runId !== tableRunId) return;
-    if (i > 10) { stopTable(); return; }
-    const cur = i;
-    highlightRow(n, cur);
-
-    const text = `${numEs(n)} por ${numEs(cur)}, ${numEs(n * cur)}`;
-    const u = mkUtterance(text, () => {
-      clearWatchdog();
-      if (runId !== tableRunId) return;
-      i++;
-      setTimeout(next, 260);
-    });
-
-    u.onerror = () => {
-      clearWatchdog();
-      if (runId !== tableRunId) return;
-      i++;
-      setTimeout(next, 260);
-    };
-
-    speechSynthesis.cancel();
-    speechSynthesis.speak(u);
-
-    // Fallback if browser never fires onend/onerror.
-    armWatchdog(() => {
-      if (runId !== tableRunId) return;
-      i++;
-      next();
-    });
-  };
-
-  const intro = mkUtterance(`Tabla del ${numEs(n)}`, () => {
-    clearWatchdog();
-    if (runId !== tableRunId) return;
-    setTimeout(next, 220);
-  });
-  intro.onerror = () => {
-    clearWatchdog();
-    if (runId !== tableRunId) return;
-    setTimeout(next, 220);
-  };
-
   speechSynthesis.cancel();
-  speechSynthesis.speak(intro);
-  armWatchdog(() => {
+  await waitMs(80);
+
+  // Intro
+  await speakOnce(`Tabla del ${numEs(n)}`);
+  if (runId !== tableRunId) return;
+
+  // Strictly sequential lines: 1..10
+  for (let i = 1; i <= 10; i++) {
     if (runId !== tableRunId) return;
-    next();
-  });
+    highlightRow(n, i);
+    await speakOnce(`${numEs(n)} por ${numEs(i)}, ${numEs(n * i)}`);
+    if (runId !== tableRunId) return;
+    await waitMs(180);
+  }
+
+  if (runId === tableRunId) stopTable();
 }
 
 function stopTable() {
   tableRunId++;
+  tableReading = false;
   if (tableReadTimer) clearTimeout(tableReadTimer);
   tableReadTimer = null;
   if (window.speechSynthesis) speechSynthesis.cancel();
