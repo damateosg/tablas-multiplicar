@@ -298,7 +298,7 @@
       backdrop-filter: blur(12px);
     }
     .t-table h3 { font-size: 1.05rem; font-weight: 800; }
-    .t-table-hdr { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+    .t-table-hdr { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
     .btn-speak {
       display:flex; align-items:center; gap:5px;
       background: rgba(139,92,246,.18); border: 1.5px solid rgba(139,92,246,.45);
@@ -325,6 +325,11 @@
     .t-row .ts { margin-left: auto; font-size: .75rem; }
     .t-row .tspk { font-size:.85rem; opacity:0; transition:opacity .15s; margin-left:2px; }
     .t-row:hover .tspk, .t-row.speaking .tspk { opacity:1; }
+
+    @media (max-width: 420px) {
+      .t-table-hdr h3 { width:100%; }
+      .btn-speak { width:100%; justify-content:center; }
+    }
 
     /* ====== NAV ====== */
     #nav {
@@ -1142,7 +1147,7 @@ function renderTableDisplay(n) {
   let html = `<div class="t-table" style="border-color:${color}40;background:${color}14;margin-top:12px">
     <div class="t-table-hdr">
       <h3 style="color:${color};margin:0">Tabla del ${n} ×</h3>
-      <button class="btn-speak" id="btn-read-table" onclick="speakTable(${n})">🔊 Leer tabla</button>
+      <button class="btn-speak" id="btn-read-table" onclick="speakTable(${n})">Leer tabla 🔊</button>
     </div>`;
   for (let i=1;i<=10;i++) {
     const c = st.cards[`${n}x${i}`];
@@ -1267,7 +1272,7 @@ function stopTable() {
   if (window.speechSynthesis) speechSynthesis.cancel();
   document.querySelectorAll('.t-row').forEach(r => r.classList.remove('speaking'));
   const btn = document.getElementById('btn-read-table');
-  if (btn) { btn.innerHTML = '🔊 Leer tabla'; btn.classList.remove('reading'); }
+  if (btn) { btn.innerHTML = 'Leer tabla 🔊'; btn.classList.remove('reading'); }
 }
 
 function highlightRow(a, b) {
