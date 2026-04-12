@@ -297,17 +297,34 @@
       border-radius: var(--r); padding: 16px;
       backdrop-filter: blur(12px);
     }
-    .t-table h3 { font-size: 1.05rem; font-weight: 800; margin-bottom: 12px; }
+    .t-table h3 { font-size: 1.05rem; font-weight: 800; }
+    .t-table-hdr { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+    .btn-speak {
+      display:flex; align-items:center; gap:5px;
+      background: rgba(139,92,246,.18); border: 1.5px solid rgba(139,92,246,.45);
+      border-radius: 20px; color:#fff; font-family:inherit;
+      font-size:.8rem; font-weight:800; padding:6px 13px;
+      cursor:pointer; transition:all .2s;
+    }
+    .btn-speak:hover { background:rgba(139,92,246,.32); transform:scale(1.04); }
+    .btn-speak.reading { background:rgba(239,68,68,.2); border-color:rgba(239,68,68,.5); animation:pulse .9s ease-in-out infinite; }
+    @keyframes pulse { 0%,100%{box-shadow:0 0 0 0 rgba(139,92,246,.4)} 50%{box-shadow:0 0 0 7px rgba(139,92,246,0)} }
     .t-row {
       display: flex; align-items: center; gap: 8px;
       font-size: .95rem; font-weight: 700;
-      padding: 5px 7px; border-radius: 7px;
+      padding: 6px 7px; border-radius: 7px;
       background: rgba(255,255,255,.04); margin-bottom: 4px;
+      cursor: pointer; transition: background .15s, transform .1s;
+      border-left: 3px solid transparent;
     }
+    .t-row:hover { background: rgba(255,255,255,.1); transform:translateX(2px); }
+    .t-row.speaking { background: rgba(139,92,246,.22); border-left-color: var(--purple); }
     .t-row .tx { min-width: 28px; text-align: right; }
     .t-row .to { color: var(--muted); }
     .t-row .tr { color: var(--green); font-weight: 900; min-width: 36px; }
     .t-row .ts { margin-left: auto; font-size: .75rem; }
+    .t-row .tspk { font-size:.85rem; opacity:0; transition:opacity .15s; margin-left:2px; }
+    .t-row:hover .tspk, .t-row.speaking .tspk { opacity:1; }
 
     /* ====== NAV ====== */
     #nav {
@@ -1120,19 +1137,24 @@ function renderTables() {
 }
 
 function renderTableDisplay(n) {
+  stopTable();
   const color = TABLE_COLORS[n-1];
   let html = `<div class="t-table" style="border-color:${color}40;background:${color}14;margin-top:12px">
-    <h3 style="color:${color}">Tabla del ${n} ×</h3>`;
+    <div class="t-table-hdr">
+      <h3 style="color:${color};margin:0">Tabla del ${n} ×</h3>
+      <button class="btn-speak" id="btn-read-table" onclick="speakTable(${n})">🔊 Leer tabla</button>
+    </div>`;
   for (let i=1;i<=10;i++) {
     const c = st.cards[`${n}x${i}`];
     const dot = c.total===0 ? '⚪' : c.interval>=7 ? '🟢' : '🟡';
-    html += `<div class="t-row">
+    html += `<div class="t-row" id="row-${n}-${i}" onclick="speakMult(${n},${i})">
       <span class="tx">${n}</span>
       <span class="to">×</span>
       <span class="tx">${i}</span>
       <span class="to">=</span>
       <span class="tr">${n*i}</span>
       <span class="ts">${dot}</span>
+      <span class="tspk">🔊</span>
     </div>`;
   }
   html += '</div>';
@@ -1140,10 +1162,126 @@ function renderTableDisplay(n) {
 }
 
 /* ============================================================
+   TTS — Text-to-Speech (Web Speech API)
+============================================================ */
+const NUMS_ES = [
+  '','uno','dos','tres','cuatro','cinco','seis','siete','ocho','nueve','diez',
+  'once','doce','trece','catorce','quince','dieciséis','diecisiete','dieciocho','diecinueve','veinte',
+  'veintiuno','veintidós','veintitrés','veinticuatro','veinticinco','veintiséis','veintisiete',
+  'veintiocho','veintinueve','treinta','treinta y uno','treinta y dos','treinta y tres',
+  'treinta y cuatro','treinta y cinco','treinta y seis','treinta y siete','treinta y ocho',
+  'treinta y nueve','cuarenta','cuarenta y uno','cuarenta y dos','cuarenta y tres',
+  'cuarenta y cuatro','cuarenta y cinco','cuarenta y seis','cuarenta y siete','cuarenta y ocho',
+  'cuarenta y nueve','cincuenta','cincuenta y uno','cincuenta y dos','cincuenta y tres',
+  'cincuenta y cuatro','cincuenta y cinco','cincuenta y seis','cincuenta y siete','cincuenta y ocho',
+  'cincuenta y nueve','sesenta','sesenta y uno','sesenta y dos','sesenta y tres',
+  'sesenta y cuatro','sesenta y cinco','sesenta y seis','sesenta y siete','sesenta y ocho',
+  'sesenta y nueve','setenta','setenta y uno','setenta y dos','setenta y tres',
+  'setenta y cuatro','setenta y cinco','setenta y seis','setenta y siete','setenta y ocho',
+  'setenta y nueve','ochenta','ochenta y uno','ochenta y dos','ochenta y tres',
+  'ochenta y cuatro','ochenta y cinco','ochenta y seis','ochenta y siete','ochenta y ocho',
+  'ochenta y nueve','noventa','noventa y uno','noventa y dos','noventa y tres',
+  'noventa y cuatro','noventa y cinco','noventa y seis','noventa y siete','noventa y ocho',
+  'noventa y nueve','cien'
+];
+function numEs(n) { return NUMS_ES[n] || String(n); }
+
+let ttsVoice = null;
+let tableReadTimer = null;
+
+function initTTS() {
+  if (!window.speechSynthesis) return;
+  const pick = () => {
+    const vs = speechSynthesis.getVoices();
+    if (!vs.length) return;
+    // Priority list: highest naturalness first
+    const tests = [
+      v => /Google.*es[\-_]ES|Google.*español.*españa/i.test(v.name),
+      v => /Microsoft.*(Elvira|Sabina|Paula|Alvaro|Helena).*Online/i.test(v.name),
+      v => /Microsoft.*(Elvira|Sabina|Paula|Alvaro|Helena)/i.test(v.name),
+      v => /(Monica|Mónica|Paulina|Diego|Jorge|Esperanza)/i.test(v.name) && /es/i.test(v.lang),
+      v => v.lang === 'es-ES',
+      v => v.lang.startsWith('es-'),
+      v => v.lang.startsWith('es'),
+    ];
+    for (const t of tests) { const m = vs.find(t); if (m) { ttsVoice = m; return; } }
+    ttsVoice = vs[0];
+  };
+  pick();
+  speechSynthesis.addEventListener('voiceschanged', pick);
+}
+
+function speak(text, onend) {
+  if (!window.speechSynthesis) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  if (ttsVoice) u.voice = ttsVoice;
+  u.lang   = 'es-ES';
+  u.rate   = 0.86;
+  u.pitch  = 1.1;
+  u.volume = 1;
+  if (onend) u.onend = onend;
+  // Workaround: some browsers need a tiny delay after cancel()
+  setTimeout(() => speechSynthesis.speak(u), 80);
+}
+
+function speakMult(a, b) {
+  stopTable();
+  speak(`${numEs(a)} por ${numEs(b)}, ${numEs(a * b)}`);
+  highlightRow(a, b);
+  // Clear highlight after 2s
+  setTimeout(() => {
+    const r = document.getElementById(`row-${a}-${b}`);
+    if (r) r.classList.remove('speaking');
+  }, 2200);
+}
+
+function speakTable(n) {
+  // Toggle: if already reading, stop
+  if (tableReadTimer !== null) { stopTable(); return; }
+  let i = 1;
+  const btn = document.getElementById('btn-read-table');
+  if (btn) { btn.innerHTML = '⏹ Parar'; btn.classList.add('reading'); }
+  const next = () => {
+    if (i > 10) { stopTable(); return; }
+    const cur = i;
+    highlightRow(n, cur);
+    speak(`${numEs(n)} por ${numEs(cur)}, ${numEs(n * cur)}`, () => {
+      i++;
+      tableReadTimer = setTimeout(next, 300);
+    });
+    // Safety: if onend never fires (some browsers), advance after timeout
+    tableReadTimer = setTimeout(() => { i++; next(); }, 3500);
+  };
+  // Mark as reading (use a sentinel value != null)
+  tableReadTimer = -1;
+  speak(`Tabla del ${numEs(n)}`, () => {
+    tableReadTimer = setTimeout(next, 250);
+  });
+  tableReadTimer = -1; // keep sentinel while intro speaks
+}
+
+function stopTable() {
+  if (tableReadTimer && tableReadTimer !== -1) clearTimeout(tableReadTimer);
+  tableReadTimer = null;
+  if (window.speechSynthesis) speechSynthesis.cancel();
+  document.querySelectorAll('.t-row').forEach(r => r.classList.remove('speaking'));
+  const btn = document.getElementById('btn-read-table');
+  if (btn) { btn.innerHTML = '🔊 Leer tabla'; btn.classList.remove('reading'); }
+}
+
+function highlightRow(a, b) {
+  document.querySelectorAll('.t-row').forEach(r => r.classList.remove('speaking'));
+  const row = document.getElementById(`row-${a}-${b}`);
+  if (row) { row.classList.add('speaking'); row.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
+}
+
+/* ============================================================
    INIT
 ============================================================ */
 function init() {
   initStars();
+  initTTS();
   checkStreakReset();
   updateHome();
 }
