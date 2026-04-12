@@ -1193,39 +1193,59 @@ function numEs(n) { return NUMS_ES[n] || String(n); }
 
 let ttsVoice = null;
 let tableReadTimer = null;
+let tableRunId = 0;
 
 function initTTS() {
   if (!window.speechSynthesis) return;
   const pick = () => {
     const vs = speechSynthesis.getVoices();
     if (!vs.length) return;
-    // Priority list: highest naturalness first
-    const tests = [
-      v => /Google.*es[\-_]ES|Google.*español.*españa/i.test(v.name),
-      v => /Microsoft.*(Elvira|Sabina|Paula|Alvaro|Helena).*Online/i.test(v.name),
-      v => /Microsoft.*(Elvira|Sabina|Paula|Alvaro|Helena)/i.test(v.name),
-      v => /(Monica|Mónica|Paulina|Diego|Jorge|Esperanza)/i.test(v.name) && /es/i.test(v.lang),
-      v => v.lang === 'es-ES',
-      v => v.lang.startsWith('es-'),
-      v => v.lang.startsWith('es'),
-    ];
-    for (const t of tests) { const m = vs.find(t); if (m) { ttsVoice = m; return; } }
-    ttsVoice = vs[0];
+
+    // Score voices by likely naturalness and Spanish quality.
+    const scoreVoice = (v) => {
+      const name = (v.name || '').toLowerCase();
+      const lang = (v.lang || '').toLowerCase();
+      let s = 0;
+
+      if (lang === 'es-es') s += 500;
+      else if (lang.startsWith('es-')) s += 350;
+      else if (lang.startsWith('es')) s += 250;
+
+      if (/natural|neural|wavenet|premium|enhanced|online/.test(name)) s += 220;
+      if (/google/.test(name)) s += 140;
+      if (/microsoft|azure/.test(name)) s += 130;
+      if (/cortana/.test(name)) s += 60;
+
+      if (/elvira|alvaro|álvaro|helena|sabina|paulina|monica|mónica|jorge|esperanza/.test(name)) s += 80;
+
+      // Slight preference for non-local voices when present (often higher quality).
+      if (v.localService === false) s += 20;
+
+      return s;
+    };
+
+    ttsVoice = [...vs].sort((a, b) => scoreVoice(b) - scoreVoice(a))[0] || vs[0];
   };
+
   pick();
   speechSynthesis.addEventListener('voiceschanged', pick);
+}
+
+function mkUtterance(text, onend) {
+  const u = new SpeechSynthesisUtterance(text);
+  if (ttsVoice) u.voice = ttsVoice;
+  u.lang   = ttsVoice?.lang || 'es-ES';
+  u.rate   = 0.9;
+  u.pitch  = 1.0;
+  u.volume = 1;
+  if (onend) u.onend = onend;
+  return u;
 }
 
 function speak(text, onend) {
   if (!window.speechSynthesis) return;
   speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(text);
-  if (ttsVoice) u.voice = ttsVoice;
-  u.lang   = 'es-ES';
-  u.rate   = 0.86;
-  u.pitch  = 1.1;
-  u.volume = 1;
-  if (onend) u.onend = onend;
+  const u = mkUtterance(text, onend);
   // Workaround: some browsers need a tiny delay after cancel()
   setTimeout(() => speechSynthesis.speak(u), 80);
 }
@@ -1244,30 +1264,76 @@ function speakMult(a, b) {
 function speakTable(n) {
   // Toggle: if already reading, stop
   if (tableReadTimer !== null) { stopTable(); return; }
+  const runId = ++tableRunId;
   let i = 1;
   const btn = document.getElementById('btn-read-table');
   if (btn) { btn.innerHTML = '⏹ Parar'; btn.classList.add('reading'); }
+
+  const clearWatchdog = () => {
+    if (tableReadTimer) clearTimeout(tableReadTimer);
+    tableReadTimer = null;
+  };
+
+  const armWatchdog = (onTimeout) => {
+    clearWatchdog();
+    // Timeout guard only; does not run in parallel with normal flow.
+    tableReadTimer = setTimeout(onTimeout, 4200);
+  };
+
   const next = () => {
+    if (runId !== tableRunId) return;
     if (i > 10) { stopTable(); return; }
     const cur = i;
     highlightRow(n, cur);
-    speak(`${numEs(n)} por ${numEs(cur)}, ${numEs(n * cur)}`, () => {
+
+    const text = `${numEs(n)} por ${numEs(cur)}, ${numEs(n * cur)}`;
+    const u = mkUtterance(text, () => {
+      clearWatchdog();
+      if (runId !== tableRunId) return;
       i++;
-      tableReadTimer = setTimeout(next, 300);
+      setTimeout(next, 260);
     });
-    // Safety: if onend never fires (some browsers), advance after timeout
-    tableReadTimer = setTimeout(() => { i++; next(); }, 3500);
+
+    u.onerror = () => {
+      clearWatchdog();
+      if (runId !== tableRunId) return;
+      i++;
+      setTimeout(next, 260);
+    };
+
+    speechSynthesis.cancel();
+    speechSynthesis.speak(u);
+
+    // Fallback if browser never fires onend/onerror.
+    armWatchdog(() => {
+      if (runId !== tableRunId) return;
+      i++;
+      next();
+    });
   };
-  // Mark as reading (use a sentinel value != null)
-  tableReadTimer = -1;
-  speak(`Tabla del ${numEs(n)}`, () => {
-    tableReadTimer = setTimeout(next, 250);
+
+  const intro = mkUtterance(`Tabla del ${numEs(n)}`, () => {
+    clearWatchdog();
+    if (runId !== tableRunId) return;
+    setTimeout(next, 220);
   });
-  tableReadTimer = -1; // keep sentinel while intro speaks
+  intro.onerror = () => {
+    clearWatchdog();
+    if (runId !== tableRunId) return;
+    setTimeout(next, 220);
+  };
+
+  speechSynthesis.cancel();
+  speechSynthesis.speak(intro);
+  armWatchdog(() => {
+    if (runId !== tableRunId) return;
+    next();
+  });
 }
 
 function stopTable() {
-  if (tableReadTimer && tableReadTimer !== -1) clearTimeout(tableReadTimer);
+  tableRunId++;
+  if (tableReadTimer) clearTimeout(tableReadTimer);
   tableReadTimer = null;
   if (window.speechSynthesis) speechSynthesis.cancel();
   document.querySelectorAll('.t-row').forEach(r => r.classList.remove('speaking'));
