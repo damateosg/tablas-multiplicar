@@ -71,7 +71,7 @@
       --purple:  #D946EF;
       --purple2: #F0ABFC;
       --gold:    #FBBF24;
-      --green:   #22C55E;
+      --green:   #065F46;
       --red:     #EF4444;
       --blue:    #38BDF8;
       --pink:    #FB7185;
@@ -559,7 +559,7 @@
       <div class="daily-row">
         <div>
           <span class="due-big" id="h-due">0</span>
-          <span class="muted" style="font-size:.85rem">fichas a repasar</span>
+          <span class="muted" style="font-size:.85rem">fichas hoy</span>
           <div class="due-sub" id="h-upcoming"></div>
         </div>
         <button class="btn-main" style="width:auto;padding:10px 18px" onclick="goStudy()">Repasar 📚</button>
@@ -582,8 +582,8 @@
     </div>
 
     <div class="tip-box">
-      💡 <strong>Repetición espaciada:</strong> el sistema decide qué repasar según tu memoria, igual que Anki.
-      ¡Estudia un poco cada día y aprenderás para siempre! 🧠
+      💡 <strong>Repetición espaciada:</strong> el sistema te propone qué repasar según lo que ya dominas y lo que más te cuesta.
+      ¡Estudia un poco cada día y avanzarás sin agobios! 🧠
     </div>
   </div>
 
@@ -699,6 +699,9 @@
     <button class="btn-sec" id="btn-reset" onclick="confirmReset()" style="margin-top:4px;border-color:rgba(239,68,68,.4);color:rgba(239,68,68,.8)">
       🗑️ Reiniciar progreso
     </button>
+    <p class="muted" style="font-size:.78rem;text-align:center;margin-top:4px">
+      Tu progreso se guarda en este navegador y en este dispositivo.
+    </p>
   </div>
 
   <!-- ===== TABLES REFERENCE ===== -->
@@ -729,6 +732,7 @@
 const DAY = 864e5;
 const KEY = 'tablas-v3';
 const PRACTICE_MAX = 20;
+const DAILY_REVIEW_LIMIT = 15;
 
 /* ============================================================
    SM-2 ALGORITHM
@@ -977,10 +981,10 @@ function applyTimeTheme(hour) {
 
   let cls = 't-night';
   let color = '#0f0c29';
-  if (hour < 12) {
+  if (hour >= 7 && hour < 14) {
     cls = 't-morning';
     color = '#8EC5FC';
-  } else if (hour < 18) {
+  } else if (hour >= 14 && hour < 21) {
     cls = 't-afternoon';
     color = '#FB923C';
   }
@@ -994,10 +998,13 @@ function applyTimeTheme(hour) {
    HOME SCREEN
 ============================================================ */
 function updateHome() {
-  const due = getDue().length;
-  document.getElementById('h-due').textContent = due;
+  const dueTotal = getDue().length;
+  const dueToday = Math.min(dueTotal, DAILY_REVIEW_LIMIT);
+  document.getElementById('h-due').textContent = dueToday;
   const up = getUpcoming();
-  if (up.length) {
+  if (dueTotal > dueToday) {
+    document.getElementById('h-upcoming').textContent = `${dueTotal} pendientes en total · paso a paso 💪`;
+  } else if (up.length) {
     const diffH = Math.round((up[0].due - Date.now()) / 36e5);
     const diffD = Math.round((up[0].due - Date.now()) / DAY);
     document.getElementById('h-upcoming').textContent =
@@ -1010,9 +1017,9 @@ function updateHome() {
   const name = displayName();
   const h = new Date().getHours();
   applyTimeTheme(h);
-  const [emoji,title,sub] = h<12
+  const [emoji,title,sub] = (h >= 7 && h < 14)
     ? ['☀️',`¡Buenos días, ${name}!`,'¡Las tablas te esperan! 📚']
-    : h<18
+    : (h >= 14 && h < 21)
     ? ['🌤️',`¡Buenas tardes, ${name}!`,'¡Sigue con tu racha! 🔥']
     : ['🌙',`¡Buenas noches, ${name}!`,'Un último repaso y listo 🌟'];
   document.getElementById('gr-emoji').textContent = emoji;
@@ -1032,6 +1039,11 @@ function startStudy() {
   readded.clear();
   seenThisSession.clear();
   queue = getDue();
+
+  if (queue.length > DAILY_REVIEW_LIMIT) {
+    queue = queue.slice(0, DAILY_REVIEW_LIMIT);
+    toast(`Hoy haremos ${DAILY_REVIEW_LIMIT} fichas para avanzar sin agobios 💪`, 2600);
+  }
 
   if (queue.length === 0) {
     document.getElementById('st-active').classList.add('hidden');
