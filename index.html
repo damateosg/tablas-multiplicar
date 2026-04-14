@@ -437,6 +437,7 @@
       position: fixed; bottom: 92px; left: 50%;
       transform: translateX(-50%) translateY(16px);
       background: rgba(20,15,50,.96); border: 1px solid var(--card-b);
+      color: #ffffff;
       border-radius: 30px; padding: 10px 22px;
       font-size: .9rem; font-weight: 700; white-space: nowrap;
       opacity: 0; pointer-events: none;
@@ -1121,6 +1122,11 @@ function rateCard(grade) {
     }
     xpPop(-3, window.innerWidth/2 - 20, window.innerHeight - 210);
   }
+
+  // Avoid a "stuck" feeling: hide the revealed green answer while next card is loading.
+  document.getElementById('fc').classList.remove('flipped');
+  document.getElementById('st-rate').classList.add('hidden');
+  document.getElementById('st-hint').textContent = 'Cargando siguiente ficha...';
 
   touchStreak();
   save();
